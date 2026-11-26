@@ -1,0 +1,100 @@
+from machine import Pin
+import bluetooth
+import time
+from micropython import const
+
+# Pines de los LED
+led_rojo = Pin(18, Pin.OUT)
+led_verde = Pin(19, Pin.OUT)
+
+# Bluetooth BLE
+ble = bluetooth.BLE()
+ble.active(True)
+
+# UUID del servicio UART
+UART_UUID = bluetooth.UUID("6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
+UART_RX = bluetooth.UUID("6E400002-B5A3-F393-E0A9-E50E24DCCA9E")
+UART_TX = bluetooth.UUID("6E400003-B5A3-F393-E0A9-E50E24DCCA9E")
+
+UART_SERVICE = (
+    UART_UUID,
+    (
+        (UART_TX, bluetooth.FLAG_NOTIFY),
+        (UART_RX, bluetooth.FLAG_WRITE),
+    ),
+)
+
+((tx, rx),) = ble.gatts_register_services((UART_SERVICE,))
+
+# Eventos Bluetooth
+_IRQ_CONNECT = const(1)
+_IRQ_DISCONNECT = const(2)
+_IRQ_GATTS_WRITE = const(3)
+
+conectado = False
+
+
+def bluetooth_evento(evento, datos):
+    global conectado
+
+    if evento == _IRQ_CONNECT:
+        conectado = True
+        print("Bluetooth conectado")
+
+    elif evento == _IRQ_DISCONNECT:
+        conectado = False
+        print("Bluetooth desconectado")
+
+    elif evento == _IRQ_GATTS_WRITE:
+        conexion, atributo = datos
+
+        if atributo == rx:
+            comando = ble.gatts_read(rx).decode().strip()
+
+            print("Comando recibido:", comando)
+
+            if comando == "1":
+                led_rojo.on()
+
+            elif comando == "2":
+                led_rojo.off()
+
+            elif comando == "3":
+                led_verde.on()
+
+            elif comando == "4":
+                led_verde.off()
+
+            elif comando == "5":
+                led_rojo.on()
+                led_verde.on()
+
+            elif comando == "0":
+                led_rojo.off()
+                led_verde.off()
+
+
+ble.irq(bluetooth_evento)
+
+# Nombre Bluetooth
+nombre = "CONTROL-LEDS"
+
+# Anunciar dispositivo BLE
+def anunciar():
+    nombre_bytes = nombre.encode()
+
+    datos = bytearray(b"\x02\x01\x06")
+    datos.extend(
+        bytes((len(nombre_bytes) + 1, 0x09)) + nombre_bytes
+    )
+
+    ble.gap_advertise(100000, adv_data=datos)
+
+
+anunciar()
+
+print("Sistema iniciado")
+print("Busca CONTROL-LEDS en tu celular")
+
+while True:
+    time.sleep(1)
